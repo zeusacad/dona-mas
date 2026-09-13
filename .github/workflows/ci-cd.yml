@@ -7,27 +7,17 @@ on:
     branches: [main]
 
 jobs:
-
-  # ============================================================
-  # 1. PRUEBAS + CALIDAD DE CÓDIGO
-  # ============================================================
   test:
-    name: Tests y SonarQube Cloud
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-
     steps:
-      - name: Checkout del repositorio
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "18"
           cache: "npm"
 
       - name: Instalar dependencias
@@ -39,17 +29,12 @@ jobs:
       - name: Ejecutar pruebas con cobertura
         run: npm test
 
-      - name: Analizar calidad con SonarQube Cloud
+      - name: Analisis de calidad con SonarQube Cloud
         uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-
-  # ============================================================
-  # 2. ANÁLISIS DE SEGURIDAD CON OWASP ZAP
-  # ============================================================
   security-scan:
-    name: OWASP ZAP Security Scan
     needs: test
     runs-on: ubuntu-latest
 
@@ -57,13 +42,12 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout del repositorio
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Construir imagen Docker
         run: docker build -t donamas:scan .
 
-      - name: Levantar aplicación para análisis
+      - name: Levantar el contenedor de prueba
         run: |
           docker run -d \
             --name donamas-app \
@@ -71,55 +55,28 @@ jobs:
             -e JWT_SECRET=ci-scan-secret \
             donamas:scan
 
-          echo "Esperando a que la aplicación esté disponible..."
+          sleep 5
 
-          curl \
-            --retry 10 \
-            --retry-delay 3 \
-            --retry-connrefused \
-            http://localhost:3000/health
-
-          echo "Aplicación disponible correctamente."
-
+          echo "Contenedor iniciado:"
+          docker ps
 
       - name: Escaneo de seguridad con OWASP ZAP
         uses: zaproxy/action-baseline@v0.12.0
-        continue-on-error: true
         with:
           target: "http://localhost:3000"
           cmd_options: ""
+          fail_action: false
 
-
-      - name: Verificar reportes generados
-        if: always()
-        run: |
-          echo "Archivos generados por OWASP ZAP:"
-          ls -lah
-
-          if [ -f report_html.html ]; then
-            echo "Reporte HTML encontrado."
-          else
-            echo "ADVERTENCIA: No se encontró report_html.html"
-          fi
-
-
-      - name: Subir reporte HTML de ZAP
+      - name: Subir reporte de ZAP como artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: zap-report-html
-          path: report_html.html
+          name: zap-report
+          path: |
+            report_html.html
+            report_json.json
+            report_md.md
           if-no-files-found: warn
-
-
-      - name: Subir reporte JSON de ZAP
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: zap-report-json
-          path: report_json.json
-          if-no-files-found: warn
-
 
       - name: Detener contenedor de prueba
         if: always()
@@ -127,16 +84,9 @@ jobs:
           docker stop donamas-app || true
           docker rm donamas-app || true
 
-
-  # ============================================================
-  # 3. DEPLOYMENT
-  # ============================================================
   deploy:
-    name: Deploy a GitHub Container Registry
     needs: [test, security-scan]
-
     if: github.ref == 'refs/heads/main'
-
     runs-on: ubuntu-latest
 
     permissions:
@@ -144,10 +94,9 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout del repositorio
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Iniciar sesión en GitHub Container Registry
+      - name: Iniciar sesion en GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -162,3 +111,4 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/donamas:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/donamas:staging
+
