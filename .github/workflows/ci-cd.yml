@@ -7,10 +7,16 @@ on:
     branches: [main]
 
 jobs:
+
+  # =========================================================
+  # 1. PRUEBAS + LINT + SONARQUBE
+  # =========================================================
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Descargar codigo
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -34,6 +40,10 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+
+  # =========================================================
+  # 2. ESCANEO DE SEGURIDAD CON OWASP ZAP
+  # =========================================================
   security-scan:
     needs: test
     runs-on: ubuntu-latest
@@ -42,7 +52,8 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Descargar codigo
+        uses: actions/checkout@v4
 
       - name: Construir imagen Docker
         run: docker build -t donamas:scan .
@@ -65,11 +76,12 @@ jobs:
         with:
           target: "http://localhost:3000"
           cmd_options: ""
+          allow_issue_writing: false
           fail_action: false
 
       - name: Subir reporte de ZAP como artifact
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: zap-report
           path: |
@@ -84,6 +96,10 @@ jobs:
           docker stop donamas-app || true
           docker rm donamas-app || true
 
+
+  # =========================================================
+  # 3. DEPLOY / GITHUB CONTAINER REGISTRY
+  # =========================================================
   deploy:
     needs: [test, security-scan]
     if: github.ref == 'refs/heads/main'
@@ -94,7 +110,8 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Descargar codigo
+        uses: actions/checkout@v4
 
       - name: Iniciar sesion en GitHub Container Registry
         uses: docker/login-action@v3
@@ -111,4 +128,3 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/donamas:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/donamas:staging
-
