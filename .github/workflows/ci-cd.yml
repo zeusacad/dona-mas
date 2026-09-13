@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
@@ -27,30 +29,62 @@ jobs:
       - name: Ejecutar pruebas con cobertura
         run: npm test
 
-      - name: Analisis de calidad con SonarQube
-        uses: SonarSource/sonarcloud-github-action@master
+      - name: Analisis de calidad con SonarQube Cloud
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  deploy:
+  security-scan:
     needs: test
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Construir imagen Docker
-        run: docker build -t donamas:${{ github.sha }} .
+        run: docker build -t donamas:scan .
 
-      - name: Iniciar sesion en el registro de contenedores
-        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USER }}" --password-stdin registry.example.com
-
-      - name: Subir imagen al registro
+      - name: Levantar el contenedor de prueba
         run: |
-          docker tag donamas:${{ github.sha }} registry.example.com/donamas:${{ github.sha }}
-          docker push registry.example.com/donamas:${{ github.sha }}
+          docker run -d --name donamas-app -p 3000:3000 -e JWT_SECRET=ci-scan-secret donamas:scan
+          sleep 5
+          curl --retry 5 --retry-delay 3 --retry-connrefused http://localhost:3000/health
 
-      - name: Desplegar en Kubernetes (entorno de pruebas)
-        run: |
-          kubectl set image deployment/donamas app=registry.example.com/donamas:${{ github.sha }} --namespace=staging
+      - name: Escaneo de seguridad con OWASP ZAP
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "http://localhost:3000"
+          cmd_options: "-a"
+          fail_action: false
+
+      - name: Subir reporte de ZAP como artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-report
+          path: report_html.html
+
+  deploy:
+    needs: [test, security-scan]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Iniciar sesion en GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Construir y publicar imagen (entorno de pruebas)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/donamas:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/donamas:staging
