@@ -1,0 +1,14 @@
+# Dependencias
+node_modules/
+
+# Reportes de cobertura generados por Jest
+coverage/
+
+# Archivos del sistema
+.DS_Store
+
+# Variables de entorno
+.env
+
+# Logs
+*.log

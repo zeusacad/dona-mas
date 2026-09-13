@@ -1,0 +1,28 @@
+
+> donamas@1.0.0 test
+> jest --coverage --coverageReporters=text --coverageReporters=json-summary
+
+PASS tests/donations.test.js (10.491 s)
+PASS tests/auth.test.js
+PASS tests/reports.test.js
+--------------------------|---------|----------|---------|---------|-------------------
+File                      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+--------------------------|---------|----------|---------|---------|-------------------
+All files                 |   93.93 |    86.31 |   95.45 |   96.55 |                   
+ auth                     |   93.97 |    90.47 |   93.33 |      95 |                   
+  auth.controller.js      |     100 |      100 |     100 |     100 |                   
+  auth.middleware.js      |   89.47 |       80 |     100 |   89.47 | 15,24             
+  auth.service.js         |   93.47 |    93.33 |   88.88 |   95.34 | 55,76             
+ donations                |   91.89 |    79.54 |   93.75 |   98.36 |                   
+  donations.controller.js |     100 |       75 |     100 |     100 | 41                
+  donations.service.js    |   86.36 |    80.55 |    90.9 |   96.87 | 21                
+ reports                  |   97.56 |      100 |     100 |   96.96 |                   
+  reports.controller.js   |   93.75 |      100 |     100 |   93.75 | 20                
+  reports.service.js      |     100 |      100 |     100 |     100 |                   
+--------------------------|---------|----------|---------|---------|-------------------
+
+Test Suites: 3 passed, 3 total
+Tests:       50 passed, 50 total
+Snapshots:   0 total
+Time:        17.146 s
+Ran all test suites.
