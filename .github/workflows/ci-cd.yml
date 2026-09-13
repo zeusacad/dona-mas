@@ -1,0 +1,56 @@
+name: CI/CD Pipeline DonaMas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Ejecutar linting
+        run: npm run lint
+
+      - name: Ejecutar pruebas con cobertura
+        run: npm test
+
+      - name: Analisis de calidad con SonarQube
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construir imagen Docker
+        run: docker build -t donamas:${{ github.sha }} .
+
+      - name: Iniciar sesion en el registro de contenedores
+        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USER }}" --password-stdin registry.example.com
+
+      - name: Subir imagen al registro
+        run: |
+          docker tag donamas:${{ github.sha }} registry.example.com/donamas:${{ github.sha }}
+          docker push registry.example.com/donamas:${{ github.sha }}
+
+      - name: Desplegar en Kubernetes (entorno de pruebas)
+        run: |
+          kubectl set image deployment/donamas app=registry.example.com/donamas:${{ github.sha }} --namespace=staging
